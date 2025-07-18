@@ -1,47 +1,41 @@
-﻿using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
-using RepositoryADONET.App.Models;
+﻿namespace RepositoryADONET.App.Repositories;
 
-namespace RepositoryADONET.App.Repositories;
-
-public class CustomerRepository : RepositoryBase<Customer>
+public class CustomerRepository : ICustomerRepository
 {
-    public CustomerRepository(IConfiguration configuration) : base(configuration) { }
+    private readonly IRepositoryBase<Customer> _repositoryBase;
 
-    protected override Customer MapDataBaseToEntity(SqlDataReader reader)
+    public CustomerRepository(IRepositoryBase<Customer> repositoryBase)
     {
-        var customer = new Customer
-        {
-            Id = reader.GetInt32(reader.GetOrdinal("Id")),
-            Name = reader.GetString(reader.GetOrdinal("Name")),
-            Email = reader.GetString(reader.GetOrdinal("Email"))
-        };
+        _repositoryBase = repositoryBase;
+    }
 
+    public async Task<int> DeleteAsync(Customer entity)
+    {
+        var result = await _repositoryBase.DeleteAsync(entity);
+        return result;
+    }
+
+    public async Task<List<Customer>> GetAllAsync()
+    {
+        var customers = await _repositoryBase.GetAllAsync();
+        return customers;
+    }
+
+    public async Task<Customer> GetByIdAsync(int id)
+    {
+        var customer = await _repositoryBase.GetrByIdAsync(id);
         return customer;
     }
 
-    public override int Insert(Customer customer, string tableName)
+    public async Task<int> InsertAsync(Customer entity)
     {
-        using var connection = CreateConnection();
-        connection.Open();
-
-        var command = new SqlCommand($"INSERT INTO {tableName} (Name, Email) VALUES (@Name, @Email)", connection);
-        command.Parameters.AddWithValue("@Name", customer.Name);
-        command.Parameters.AddWithValue("@Email", customer.Email);
-
-        return command.ExecuteNonQuery();
+        var result = await _repositoryBase.InserAsync(entity);
+        return result;
     }
 
-    public override int Update(Customer customer, string tableName)
+    public async Task<int> UpdateAsync(Customer entity)
     {
-        using var connection = CreateConnection();
-        connection.Open();
-
-        var command = new SqlCommand($"UPDATE {tableName} SET Name = @Name, Email = @Email WHERE Id = @Id", connection);
-        command.Parameters.AddWithValue("@Name", customer.Name);
-        command.Parameters.AddWithValue("@Email", customer.Email);
-        command.Parameters.AddWithValue("@Id", customer.Id);
-
-        return command.ExecuteNonQuery();
+        var result = await _repositoryBase.UpdateAsync(entity);
+        return result;
     }
 }

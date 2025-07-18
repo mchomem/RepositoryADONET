@@ -1,13 +1,10 @@
-﻿using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
+﻿namespace RepositoryADONET.App.Repositories;
 
-namespace RepositoryADONET.App.Repositories;
-
-public abstract class RepositoryBase<T> where T : class, new()
+public class RepositoryBase<T>: IRepositoryBase<T> where T : class, new()
 {
     private readonly string _connectionString;
 
-    protected RepositoryBase(IConfiguration configuration)
+    public RepositoryBase(IConfiguration configuration)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
     }
@@ -17,14 +14,37 @@ public abstract class RepositoryBase<T> where T : class, new()
         return new SqlConnection(_connectionString);
     }
 
-    protected abstract T MapDataBaseToEntity(SqlDataReader reader);
+    public T MapDataBaseToEntity(SqlDataReader reader)
+    {
+        var entity = new T();
+        var entityType = typeof(T);
 
-    public virtual async Task<T> GetrByIdAsync(int id, string tableName)
+        foreach (var property in entityType.GetProperties())
+        {
+            if (!reader.HasColumn(property.Name) || !property.CanWrite)
+                continue;
+
+            var value = reader[property.Name];
+
+            if (value == DBNull.Value)
+                property.SetValue(entity, null);
+            else
+            {
+                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                var safeValue = Convert.ChangeType(value, targetType);
+                property.SetValue(entity, safeValue);
+            }
+        }
+
+        return entity;
+    }
+
+    public async Task<T> GetrByIdAsync(int id)
     {
         using var connection = CreateConnection();
         await connection.OpenAsync();
 
-        var command = new SqlCommand($"SELECT * FROM {tableName} WHERE Id = @Id", connection);
+        var command = new SqlCommand($"select * from {typeof(T).Name} where Id = @Id", connection);
         command.Parameters.AddWithValue("@Id", id);
 
         using var reader = await command.ExecuteReaderAsync();
@@ -37,14 +57,14 @@ public abstract class RepositoryBase<T> where T : class, new()
         return null!;
     }
 
-    public virtual async Task<List<T>> GetAllAsync(string tableName)
+    public async Task<List<T>> GetAllAsync()
     {
         var list = new List<T>();
 
         using var connection = CreateConnection();
         await connection.OpenAsync();
 
-        var command = new SqlCommand($"SELECT * FROM {tableName}", connection);
+        var command = new SqlCommand($"select * from {typeof(T).Name}", connection);
         using var reader = await command.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -55,18 +75,80 @@ public abstract class RepositoryBase<T> where T : class, new()
         return list;
     }
 
-    public abstract int Insert(T entity, string tableName);
-
-    public abstract int Update(T entity, string tableName);
-
-    public virtual int Delete(int id, string tableName)
+    public async Task<int> InserAsync(T entity)
     {
         using var connection = CreateConnection();
-        connection.Open();
+        await connection.OpenAsync();
 
-        var command = new SqlCommand($"DELETE FROM {tableName} WHERE Id = @Id", connection);
-        command.Parameters.AddWithValue("@Id", id);
+        var properties = typeof(T).GetProperties()
+            .Where(p => p.CanRead && p.Name.ToLower() != "id")
+            .ToList();
+
+        var columnsNames = string.Join(", ", properties.Select(p => p.Name));
+        var parametersNames = string.Join(", ", properties.Select(p => $"@{p.Name}"));
+        var commandTextPlain = $"insert into {typeof(T).Name} ({columnsNames}) values ({parametersNames})";
+        using var command = new SqlCommand(commandTextPlain, connection);
+
+        foreach (var prop in properties)
+        {
+            var value = prop.GetValue(entity) ?? DBNull.Value;
+            command.Parameters.AddWithValue($"@{prop.Name}", value);
+        }
 
         return command.ExecuteNonQuery();
+    }
+
+    public async Task<int> UpdateAsync(T entity)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync();
+
+        var properties = typeof(T).GetProperties()
+            .Where(p => p.CanRead && p.Name.ToLower() != "id")
+            .ToList();
+
+        var idProperty = typeof(T).GetProperties().Where(p => p.CanRead).FirstOrDefault()?.Name ?? "Id";
+
+        var columnsNames = properties.Select(p => p.Name);
+
+        var commandTextPlain = $"update {typeof(T).Name} set ";
+        var filedsToUpdated = new List<string>();
+
+        foreach (var columnName in columnsNames)
+        {
+            filedsToUpdated.Add($"{columnName} = @{columnName}");
+        }
+
+        commandTextPlain += string.Join(", ", filedsToUpdated);
+
+        commandTextPlain += $" where {idProperty} = @{idProperty}";
+
+        using var command = new SqlCommand(commandTextPlain, connection);
+
+        foreach (var prop in properties)
+        {
+            var value = prop.GetValue(entity) ?? DBNull.Value;
+            command.Parameters.AddWithValue($"@{prop.Name}", value);
+        }
+
+        var valueId = typeof(T).GetProperty(idProperty)?.GetValue(entity) ?? DBNull.Value;
+        command.Parameters.AddWithValue($"@{idProperty}", valueId);
+
+        return command.ExecuteNonQuery();
+    }
+
+    public async Task<int> DeleteAsync(T entity)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync();
+
+        var idProperty = typeof(T).GetProperties().Where(p => p.CanRead).FirstOrDefault()?.Name ?? "Id";
+
+        var command = new SqlCommand($"delete from {typeof(T).Name} where Id = @Id", connection);
+
+        var valueId = typeof(T).GetProperty(idProperty)?.GetValue(entity) ?? DBNull.Value;
+        command.Parameters.AddWithValue($"@{idProperty}", valueId);
+
+        return await command.ExecuteNonQueryAsync();
     }
 }
