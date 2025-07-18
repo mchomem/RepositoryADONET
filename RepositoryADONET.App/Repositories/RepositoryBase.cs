@@ -108,9 +108,7 @@ public class RepositoryBase<T>: IRepositoryBase<T> where T : class, new()
             .ToList();
 
         var idProperty = typeof(T).GetProperties().Where(p => p.CanRead).FirstOrDefault()?.Name ?? "Id";
-
         var columnsNames = properties.Select(p => p.Name);
-
         var commandTextPlain = $"update {typeof(T).Name} set ";
         var filedsToUpdated = new List<string>();
 
@@ -120,7 +118,6 @@ public class RepositoryBase<T>: IRepositoryBase<T> where T : class, new()
         }
 
         commandTextPlain += string.Join(", ", filedsToUpdated);
-
         commandTextPlain += $" where {idProperty} = @{idProperty}";
 
         using var command = new SqlCommand(commandTextPlain, connection);
@@ -143,9 +140,7 @@ public class RepositoryBase<T>: IRepositoryBase<T> where T : class, new()
         await connection.OpenAsync();
 
         var idProperty = typeof(T).GetProperties().Where(p => p.CanRead).FirstOrDefault()?.Name ?? "Id";
-
         var command = new SqlCommand($"delete from {typeof(T).Name} where Id = @Id", connection);
-
         var valueId = typeof(T).GetProperty(idProperty)?.GetValue(entity) ?? DBNull.Value;
         command.Parameters.AddWithValue($"@{idProperty}", valueId);
 
