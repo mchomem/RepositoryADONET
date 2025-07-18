@@ -95,7 +95,7 @@ public class RepositoryBase<T>: IRepositoryBase<T> where T : class, new()
             command.Parameters.AddWithValue($"@{prop.Name}", value);
         }
 
-        return command.ExecuteNonQuery();
+        return await command.ExecuteNonQueryAsync();
     }
 
     public async Task<int> UpdateAsync(T entity)
@@ -134,7 +134,7 @@ public class RepositoryBase<T>: IRepositoryBase<T> where T : class, new()
         var valueId = typeof(T).GetProperty(idProperty)?.GetValue(entity) ?? DBNull.Value;
         command.Parameters.AddWithValue($"@{idProperty}", valueId);
 
-        return command.ExecuteNonQuery();
+        return await command.ExecuteNonQueryAsync();
     }
 
     public async Task<int> DeleteAsync(T entity)
